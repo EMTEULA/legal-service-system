@@ -21,7 +21,6 @@ mybatis:
   mapper-locations: classpath:mapper/*.xml
   configuration:
     map-underscore-to-camel-case: true
-    object-wrapper-factory: com.legal.config.CamelCaseMapWrapperFactory
 
 pagehelper:
   helper-dialect: mysql
