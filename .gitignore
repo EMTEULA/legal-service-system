@@ -15,5 +15,5 @@ frontend-legal/dist/
 *.log
 
 # Local requirement and course reference documents
-/*.docx
-/*.pdf
+*.docx
+*.pdf
