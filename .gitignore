@@ -1,0 +1,19 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Java
+backend-legal/target/
+
+# Vue
+frontend-legal/node_modules/
+frontend-legal/dist/
+
+# Local configuration
+.env
+*.log
+
+# Local requirement and course reference documents
+/*.docx
+/*.pdf

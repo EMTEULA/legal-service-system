@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.legal.mapper.LegalMapper">
+    <select id="findUserByUsername" resultType="map">
+        SELECT id, username, password, role, ref_id refId FROM user WHERE username = #{username}
+    </select>
+    <select id="findLawyerById" resultType="map">
+        SELECT l.*, GROUP_CONCAT(lc.category_id ORDER BY lc.category_id) category_ids
+        FROM lawyer l LEFT JOIN lawyer_category lc ON l.id=lc.lawyer_id AND lc.status=1
+        WHERE l.id=#{id} GROUP BY l.id
+    </select>
+    <select id="findCustomerById" resultType="map">
+        SELECT * FROM customer WHERE id=#{id}
+    </select>
+    <insert id="insertCustomer" parameterType="map" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO customer(name,phone,email,address) VALUES(#{name},#{phone},#{email},#{address})
+    </insert>
+    <insert id="insertUser" parameterType="map" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user(username,password,role,ref_id) VALUES(#{username},#{password},#{role},#{refId})
+    </insert>
+
+    <select id="categoryList" resultType="map">
+        SELECT * FROM legal_category
+        <where>
+            <if test="name != null and name != ''">AND name LIKE CONCAT('%',#{name},'%')</if>
+            <if test="status != null">AND status=#{status}</if>
+        </where>
+        ORDER BY id DESC
+    </select>
+    <select id="categoryAll" resultType="map">
+        SELECT * FROM legal_category WHERE status=1 ORDER BY id
+    </select>
+    <select id="categoryById" resultType="map">SELECT * FROM legal_category WHERE id=#{id}</select>
+    <insert id="insertCategory" parameterType="map" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO legal_category(name,description,base_price,status)
+        VALUES(#{name},#{description},#{basePrice},#{status})
+    </insert>
+    <update id="updateCategory" parameterType="map">
+        UPDATE legal_category SET name=#{name},description=#{description},
+        base_price=#{basePrice},status=#{status} WHERE id=#{id}
+    </update>
+    <delete id="deleteCategory">DELETE FROM legal_category WHERE id=#{id}</delete>
+    <select id="countCategoryUsed" resultType="int">
+        SELECT (SELECT COUNT(*) FROM lawyer_category WHERE category_id=#{id})+
+               (SELECT COUNT(*) FROM consult_appointment WHERE category_id=#{id})
+    </select>
+
+    <select id="lawyerList" resultType="map">
+        SELECT l.*, GROUP_CONCAT(DISTINCT c.name ORDER BY c.id) category_names,
+               GROUP_CONCAT(DISTINCT c.id ORDER BY c.id) category_ids
+        FROM lawyer l
+        LEFT JOIN lawyer_category lc ON l.id=lc.lawyer_id AND lc.status=1
+        LEFT JOIN legal_category c ON lc.category_id=c.id
+        <where>
+            <if test="name != null and name != ''">AND l.name LIKE CONCAT('%',#{name},'%')</if>
+            <if test="categoryId != null">AND EXISTS(SELECT 1 FROM lawyer_category x WHERE x.lawyer_id=l.id AND x.category_id=#{categoryId} AND x.status=1)</if>
+            <if test="status != null">AND l.status=#{status}</if>
+        </where>
+        GROUP BY l.id ORDER BY l.id DESC
+    </select>
+    <select id="availableLawyers" resultType="map">
+        SELECT DISTINCT l.id,l.name,l.gender,l.phone,l.license_no,l.experience_years,l.introduction,l.avatar_url,
+               c.base_price
+        FROM lawyer l
+        JOIN lawyer_category lc ON l.id=lc.lawyer_id AND lc.status=1
+        JOIN legal_category c ON lc.category_id=c.id AND c.status=1
+        JOIN lawyer_schedule s ON l.id=s.lawyer_id AND s.status=0
+        WHERE l.status=1 AND lc.category_id=#{categoryId}
+          AND s.start_time &lt;= #{startTime} AND s.end_time &gt;= #{endTime}
+          AND NOT EXISTS(
+            SELECT 1 FROM consult_appointment a
+            WHERE a.lawyer_id=l.id AND a.status IN(0,1,3)
+              AND a.start_time &lt; #{endTime} AND a.end_time &gt; #{startTime}
+          )
+        ORDER BY l.experience_years DESC
+    </select>
+    <insert id="insertLawyer" parameterType="map" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO lawyer(name,gender,phone,license_no,experience_years,introduction,avatar_url,status)
+        VALUES(#{name},#{gender},#{phone},#{licenseNo},#{experienceYears},#{introduction},#{avatarUrl},#{status})
+    </insert>
+    <update id="updateLawyer" parameterType="map">
+        UPDATE lawyer SET name=#{name},gender=#{gender},phone=#{phone},license_no=#{licenseNo},
+        experience_years=#{experienceYears},introduction=#{introduction},avatar_url=#{avatarUrl},status=#{status}
+        WHERE id=#{id}
+    </update>
+    <update id="applyLawyerProfile" parameterType="map">
+        UPDATE lawyer SET name=#{applyName},phone=#{applyPhone},introduction=#{applyIntroduction} WHERE id=#{lawyerId}
+    </update>
+    <delete id="deleteLawyer">DELETE FROM lawyer WHERE id=#{id}</delete>
+    <delete id="deleteLawyerSchedules">DELETE FROM lawyer_schedule WHERE lawyer_id=#{lawyerId}</delete>
+    <delete id="deleteUserByRoleRef">DELETE FROM user WHERE role=#{role} AND ref_id=#{refId}</delete>
+    <delete id="deleteLawyerCategories">DELETE FROM lawyer_category WHERE lawyer_id=#{lawyerId}</delete>
+    <insert id="insertLawyerCategory">
+        INSERT INTO lawyer_category(lawyer_id,category_id,status) VALUES(#{lawyerId},#{categoryId},1)
+    </insert>
+    <select id="countLawyerBusiness" resultType="int">
+        SELECT (SELECT COUNT(*) FROM consult_appointment WHERE lawyer_id=#{lawyerId} AND status IN(0,1,3))+
+               (SELECT COUNT(*) FROM consult_order WHERE lawyer_id=#{lawyerId} AND status IN(0,1))
+    </select>
+
+    <select id="scheduleList" resultType="map">
+        SELECT s.*,l.name lawyer_name FROM lawyer_schedule s JOIN lawyer l ON s.lawyer_id=l.id
+        <where>
+            <if test="lawyerId != null">AND s.lawyer_id=#{lawyerId}</if>
+            <if test="fromTime != null">AND s.end_time &gt;= #{fromTime}</if>
+        </where>
+        ORDER BY s.start_time
+    </select>
+    <select id="scheduleById" resultType="map">SELECT * FROM lawyer_schedule WHERE id=#{id}</select>
+    <insert id="insertSchedule" parameterType="map" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO lawyer_schedule(lawyer_id,start_time,end_time,status,remark)
+        VALUES(#{lawyerId},#{startTime},#{endTime},#{status},#{remark})
+    </insert>
+    <update id="updateSchedule" parameterType="map">
+        UPDATE lawyer_schedule SET start_time=#{startTime},end_time=#{endTime},status=#{status},remark=#{remark}
+        WHERE id=#{id}
+    </update>
+    <delete id="deleteSchedule">DELETE FROM lawyer_schedule WHERE id=#{id}</delete>
+    <select id="countScheduleConflict" resultType="int">
+        SELECT COUNT(*) FROM lawyer_schedule WHERE lawyer_id=#{lawyerId} AND status!=2
+        AND start_time &lt; #{endTime} AND end_time &gt; #{startTime}
+        <if test="excludeId != null">AND id!=#{excludeId}</if>
+    </select>
+
+    <select id="countAppointmentConflict" resultType="int">
+        SELECT COUNT(*) FROM consult_appointment
+        WHERE lawyer_id=#{lawyerId} AND status IN(0,1,3)
+          AND start_time &lt; #{endTime} AND end_time &gt; #{startTime}
+        <if test="excludeId != null">AND id!=#{excludeId}</if>
+    </select>
+    <select id="countLawyerCategory" resultType="int">
+        SELECT COUNT(*) FROM lawyer_category WHERE lawyer_id=#{lawyerId} AND category_id=#{categoryId} AND status=1
+    </select>
+    <select id="countAvailableSchedule" resultType="int">
+        SELECT COUNT(*) FROM lawyer_schedule WHERE lawyer_id=#{lawyerId} AND status=0
+          AND start_time &lt;= #{startTime} AND end_time &gt;= #{endTime}
+    </select>
+    <insert id="insertAppointment" parameterType="map" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO consult_appointment(appointment_no,customer_id,lawyer_id,category_id,start_time,end_time,status,customer_remark)
+        VALUES(#{appointmentNo},#{customerId},#{lawyerId},#{categoryId},#{startTime},#{endTime},0,#{customerRemark})
+    </insert>
+    <select id="appointmentById" resultType="map">SELECT * FROM consult_appointment WHERE id=#{id}</select>
+    <select id="appointmentList" resultType="map">
+        SELECT a.*,c.name customer_name,c.phone customer_phone,l.name lawyer_name,lc.name category_name,
+               o.id order_id,o.status order_status
+        FROM consult_appointment a
+        JOIN customer c ON a.customer_id=c.id
+        JOIN lawyer l ON a.lawyer_id=l.id
+        JOIN legal_category lc ON a.category_id=lc.id
+        LEFT JOIN consult_order o ON o.appointment_id=a.id AND o.status!=4
+        <where>
+            <if test="role == 'customer'">AND a.customer_id=#{refId}</if>
+            <if test="role == 'lawyer'">AND a.lawyer_id=#{refId} AND a.status IN(1,3)</if>
+            <if test="status != null">AND a.status=#{status}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (a.appointment_no LIKE CONCAT('%',#{keyword},'%') OR c.name LIKE CONCAT('%',#{keyword},'%') OR l.name LIKE CONCAT('%',#{keyword},'%'))
+            </if>
+        </where>
+        ORDER BY a.create_time DESC
+    </select>
+    <update id="auditAppointment">
+        UPDATE consult_appointment SET status=#{status},admin_id=#{adminId},audit_time=NOW(),audit_remark=#{remark}
+        WHERE id=#{id}
+    </update>
+    <update id="updateAppointmentStatus">UPDATE consult_appointment SET status=#{status} WHERE id=#{id}</update>
+
+    <select id="orderById" resultType="map">SELECT * FROM consult_order WHERE id=#{id}</select>
+    <select id="countValidOrder" resultType="int">
+        SELECT COUNT(*) FROM consult_order WHERE appointment_id=#{appointmentId} AND status IN(0,1,3)
+    </select>
+    <insert id="insertOrder" parameterType="map" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO consult_order(order_no,appointment_id,customer_id,lawyer_id,category_id,duration_minutes,
+                                  unit_price,total_amount,status,remark)
+        VALUES(#{orderNo},#{appointmentId},#{customerId},#{lawyerId},#{categoryId},#{durationMinutes},
+               #{unitPrice},#{totalAmount},0,#{remark})
+    </insert>
+    <select id="orderList" resultType="map">
+        SELECT o.*,a.appointment_no,c.name customer_name,l.name lawyer_name,lc.name category_name
+        FROM consult_order o
+        JOIN consult_appointment a ON o.appointment_id=a.id
+        JOIN customer c ON o.customer_id=c.id
+        JOIN lawyer l ON o.lawyer_id=l.id
+        JOIN legal_category lc ON o.category_id=lc.id
+        <where>
+            <if test="role == 'customer'">AND o.customer_id=#{refId}</if>
+            <if test="role == 'lawyer'">AND o.lawyer_id=#{refId}</if>
+            <if test="status != null">AND o.status=#{status}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (o.order_no LIKE CONCAT('%',#{keyword},'%') OR c.name LIKE CONCAT('%',#{keyword},'%') OR l.name LIKE CONCAT('%',#{keyword},'%'))
+            </if>
+        </where>
+        ORDER BY o.order_time DESC
+    </select>
+    <update id="auditOrder">
+        UPDATE consult_order SET status=#{status},admin_id=#{adminId},audit_time=NOW(),audit_remark=#{remark}
+        WHERE id=#{id}
+    </update>
+
+    <select id="countPendingApply" resultType="int">
+        SELECT COUNT(*) FROM lawyer_update_apply WHERE lawyer_id=#{lawyerId} AND status=0
+    </select>
+    <insert id="insertApply" parameterType="map" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO lawyer_update_apply(lawyer_id,apply_name,apply_phone,apply_introduction,apply_category_ids,status)
+        VALUES(#{lawyerId},#{applyName},#{applyPhone},#{applyIntroduction},#{applyCategoryIds},0)
+    </insert>
+    <select id="applyById" resultType="map">SELECT * FROM lawyer_update_apply WHERE id=#{id}</select>
+    <select id="applyList" resultType="map">
+        SELECT a.*,l.name lawyer_name,l.phone old_phone,l.introduction old_introduction,
+               GROUP_CONCAT(c.name ORDER BY c.id) old_category_names
+        FROM lawyer_update_apply a JOIN lawyer l ON a.lawyer_id=l.id
+        LEFT JOIN lawyer_category lc ON l.id=lc.lawyer_id
+        LEFT JOIN legal_category c ON lc.category_id=c.id
+        <where>
+            <if test="role == 'lawyer'">AND a.lawyer_id=#{refId}</if>
+            <if test="status != null">AND a.status=#{status}</if>
+        </where>
+        GROUP BY a.id ORDER BY a.create_time DESC
+    </select>
+    <update id="auditApply">
+        UPDATE lawyer_update_apply SET status=#{status},admin_id=#{adminId},audit_time=NOW(),audit_remark=#{remark}
+        WHERE id=#{id}
+    </update>
+
+    <sql id="appointmentDate">
+        <if test="startDate != null and startDate != ''">AND a.start_time &gt;= CONCAT(#{startDate},' 00:00:00')</if>
+        <if test="endDate != null and endDate != ''">AND a.start_time &lt; DATE_ADD(#{endDate},INTERVAL 1 DAY)</if>
+    </sql>
+    <sql id="orderDate">
+        <if test="startDate != null and startDate != ''">AND o.order_time &gt;= CONCAT(#{startDate},' 00:00:00')</if>
+        <if test="endDate != null and endDate != ''">AND o.order_time &lt; DATE_ADD(#{endDate},INTERVAL 1 DAY)</if>
+    </sql>
+    <select id="statsSummary" resultType="map">
+        SELECT
+          (SELECT COUNT(*) FROM consult_appointment a WHERE 1=1 <include refid="appointmentDate"/>) appointment_count,
+          (SELECT COUNT(*) FROM consult_appointment a WHERE DATE(a.create_time)=CURDATE()) today_appointment_count,
+          (SELECT COUNT(*) FROM consult_order o WHERE 1=1 <include refid="orderDate"/>) order_count,
+          (SELECT COUNT(*) FROM consult_order o WHERE o.status IN(1,3)
+             AND DATE_FORMAT(o.order_time,'%Y-%m')=DATE_FORMAT(CURDATE(),'%Y-%m')) month_order_count,
+          (SELECT IFNULL(SUM(o.total_amount),0) FROM consult_order o WHERE o.status IN(1,3)
+             <include refid="orderDate"/>) total_income
+    </select>
+    <select id="statsLawyer" resultType="map">
+        SELECT l.id,l.name lawyer_name,
+          (SELECT COUNT(*) FROM consult_appointment a WHERE a.lawyer_id=l.id
+            <if test="startDate != null and startDate != ''">AND a.start_time &gt;= CONCAT(#{startDate},' 00:00:00')</if>
+            <if test="endDate != null and endDate != ''">AND a.start_time &lt; DATE_ADD(#{endDate},INTERVAL 1 DAY)</if>
+          ) appointment_count,
+          (SELECT COUNT(*) FROM consult_order o WHERE o.lawyer_id=l.id AND o.status IN(1,3)
+            <if test="startDate != null and startDate != ''">AND o.order_time &gt;= CONCAT(#{startDate},' 00:00:00')</if>
+            <if test="endDate != null and endDate != ''">AND o.order_time &lt; DATE_ADD(#{endDate},INTERVAL 1 DAY)</if>
+          ) order_count,
+          (SELECT IFNULL(SUM(o.total_amount),0) FROM consult_order o WHERE o.lawyer_id=l.id AND o.status IN(1,3)
+            <if test="startDate != null and startDate != ''">AND o.order_time &gt;= CONCAT(#{startDate},' 00:00:00')</if>
+            <if test="endDate != null and endDate != ''">AND o.order_time &lt; DATE_ADD(#{endDate},INTERVAL 1 DAY)</if>
+          ) total_amount
+        FROM lawyer l
+        ORDER BY total_amount DESC
+    </select>
+    <select id="statsCategory" resultType="map">
+        SELECT c.id,c.name category_name,
+          (SELECT COUNT(*) FROM consult_appointment a WHERE a.category_id=c.id
+            <if test="startDate != null and startDate != ''">AND a.start_time &gt;= CONCAT(#{startDate},' 00:00:00')</if>
+            <if test="endDate != null and endDate != ''">AND a.start_time &lt; DATE_ADD(#{endDate},INTERVAL 1 DAY)</if>
+          ) appointment_count,
+          (SELECT COUNT(*) FROM consult_order o WHERE o.category_id=c.id AND o.status IN(1,3)
+            <if test="startDate != null and startDate != ''">AND o.order_time &gt;= CONCAT(#{startDate},' 00:00:00')</if>
+            <if test="endDate != null and endDate != ''">AND o.order_time &lt; DATE_ADD(#{endDate},INTERVAL 1 DAY)</if>
+          ) sales_count,
+          (SELECT IFNULL(SUM(o.total_amount),0) FROM consult_order o WHERE o.category_id=c.id AND o.status IN(1,3)
+            <if test="startDate != null and startDate != ''">AND o.order_time &gt;= CONCAT(#{startDate},' 00:00:00')</if>
+            <if test="endDate != null and endDate != ''">AND o.order_time &lt; DATE_ADD(#{endDate},INTERVAL 1 DAY)</if>
+          ) amount
+        FROM legal_category c
+        ORDER BY amount DESC
+    </select>
+    <select id="statsTrend" resultType="map">
+        SELECT DATE_FORMAT(o.order_time,'%Y-%m-%d') date,COUNT(*) order_count,SUM(o.total_amount) amount
+        FROM consult_order o WHERE o.status IN(1,3)
+        <include refid="orderDate"/>
+        GROUP BY DATE_FORMAT(o.order_time,'%Y-%m-%d') ORDER BY date
+    </select>
+</mapper>
